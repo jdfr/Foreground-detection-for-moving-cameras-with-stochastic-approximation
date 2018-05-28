@@ -11,31 +11,32 @@
 #define HAS_OPENCV
 #endif
 
-#include "mex.h"
+//#include "tbb/tbbmalloc_proxy.h"
+
+#include "BMArgs.h"
+#include <stdio.h>
 
 //Usando BruteForce matcher
-
-void mexFunction(int nlhs, mxArray *plhs[], int nrhs,
-        const mxArray *prhs[]) {
+void extrae_transformacion_BF2_MEX(Args_extrae_transformacion_BF2_MEX *args) {
     
-	if (nrhs!=9)
-        mexErrMsgIdAndTxt("extrae_tranformacion:invalidArgs", "Wrong number of arguments");
+	//if (nrhs!=9)
+        //printf("extrae_tranformacion:invalidArgs: Wrong number of arguments\n");
 
-	int tam_cols = (int) *mxGetPr(prhs[5]);
-	int tam_rows = (int) *mxGetPr(prhs[6]);
+	int tam_cols = args->tam_cols;
+	int tam_rows = args->tam_rows;
 
-	int tam_cols_ext = (int) *mxGetPr(prhs[7]);
-	int tam_rows_ext = (int) *mxGetPr(prhs[8]);
+	int tam_cols_ext = args->tam_cols_ext;
+	int tam_rows_ext = args->tam_rows_ext;
 
     //Read Matlab image and load it to an Mat struct
-	cv::Mat img_ant = cv::Mat(tam_rows, tam_cols, CV_8UC3, mxGetPr(prhs[0])).t();
-	cv::Mat img_act = cv::Mat(tam_rows_ext, tam_cols_ext, CV_8UC3, mxGetPr(prhs[1])).t();
-	bool upright = (bool) *mxGetPr(prhs[2]);
-	int minHessian = (int) *mxGetPr(prhs[3]);
-	double ransacReproj = (double) *mxGetPr(prhs[4]);
+	cv::Mat img_ant = cv::Mat(tam_rows, tam_cols, CV_8UC3, args->arg0).t();
+	cv::Mat img_act = cv::Mat(tam_rows_ext, tam_cols_ext, CV_8UC3, args->arg1).t();
+	bool upright = args->upright;
+	int minHessian = args->minHessian;
+	double ransacReproj = args->ransacReproj;
    
 	if( img_ant.empty() || img_act.empty() ){ 
-		mexErrMsgIdAndTxt("extrae_tranformacion:invalidArgs", "Error reading images");
+		printf("extrae_tranformacion:invalidArgs: Error reading images\n");
 	}
 
 	//-- Step 1: Detect the keypoints and descriptors (feautre vectors) using SURF Detector
@@ -85,11 +86,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs,
 	cv::Mat H = cv::findHomography( obj, scene, CV_RANSAC, ransacReproj);
    
     //Return output image to mxArray (Matlab matrix)
-	mwSize dims_2[2];
-	dims_2[0]=3;
-	dims_2[1]=3;
-	plhs[0]=mxCreateNumericArray (2, dims_2, mxDOUBLE_CLASS, mxREAL);
-	cv::Mat H_out(3, 3, CV_64FC1,mxGetPr(plhs[0]));
+	cv::Mat H_out(3, 3, CV_64FC1,args->output);
 	H=H.t();
 	H.copyTo(H_out);
 }

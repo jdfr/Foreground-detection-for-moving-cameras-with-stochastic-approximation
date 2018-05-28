@@ -11,11 +11,13 @@ This works for Windows and Linux.
 */
 
 
-#include "mex.h"
+#include "BMArgs.h"
 #include "BasicMath.h"
-
-
+#include <stdlib.h>
+#include <stdio.h>
+#include <float.h>
 #include <Eigen/Eigen>
+//#include "tbb/tbbmalloc_proxy.h"
 
 using namespace Eigen;
 
@@ -35,16 +37,16 @@ void GetPositionData(double * data, double * output, int Dimension, int NumPixel
 void MyMean(double *ptrMean,double *data,int Dimension,int NumPatterns);
 void MyCov(double *ptrCov,double *data,int Dimension,int NumPatterns);
 
-void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )     
+
+void initializeBM_MEX(Args_initializeBM_MEX *args)
 {
 	int Dimension,NumFrames,NumImageRows,NumImageColumns,NumCompUnif,NumCompGauss,NumComp; 
 	long NumPixels;
-	mxArray *Mu,*C,*Min,*Max,*Den,*MuFore;
-	double *data,*ptrNumComp,*ptrNumCompUnif,*ptrNumCompGauss,*ptrPi;
-	double *ptrCurrentFrame;
+	//mxArray *Mu,*C,*Min,*Max,*Den,*MuFore;
+	int *ptrNumComp,*ptrNumCompUnif,*ptrNumCompGauss,*ptrCurrentFrame;
+  double *data,*ptrPi;
 	double *ptrMu,*ptrMuFore,*ptrC,*ptrDen,*ptrMin,*ptrMax;
 	double tmpDen;
-	const int *DimPatterns;
 	register long i;
 	register int NdxComp,k;
 	double *ptrData;
@@ -53,73 +55,52 @@ void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
 		/* Log variables */
 		FILE * fich;
 		char *fileName;
-		mwSize loglen; 
-		mxArray *Log;
-		
-		/* Get the name of the log file */
-		Log = mxGetField(prhs[0],0,"Log");
-		loglen = mxGetNumberOfElements(Log) + 1;
-		fileName = mxMalloc(loglen*sizeof(char));
-
-	    if (mxGetString(Log, fileName, loglen) != 0)
-			mexErrMsgTxt("Could not convert string data.");
-		
-		fich = OpenLog(fileName);
+                fileName = args->logFileName;
+		fich = fopen(fileName, 'at');
 		fprintf(fich,"Beginning of the initialisation process\n");
     #endif
 	
 	/* Get input data */
-    DimPatterns=mxGetDimensions(prhs[1]);
-	NumImageRows = DimPatterns[0];
-	NumImageColumns = DimPatterns[1];
-	Dimension = DimPatterns[2];
-	NumFrames=DimPatterns[3];
-	ptrData = (double *)mxGetData(prhs[1]);
+	NumImageRows = args->secondArgDims[0];
+	NumImageColumns = args->secondArgDims[1];
+	Dimension = args->secondArgDims[2];
+	NumFrames=args->secondArgDims[3];
+	ptrData = args->secondArgData;
 	NumPixels = NumImageRows * NumImageColumns;
 
 	#if (DEBUG_MODE == 1) 
 		fprintf(fich,"Building of the output model\n");
     #endif
 	
-	/* Duplicate the model structure */
-    plhs[0]=mxDuplicateArray(prhs[0]);
-        
 	#if (DEBUG_MODE == 1) 
 		fprintf(fich,"Getting the work variables\n");
 	#endif
 	
 	/* Get the work variables */
-	ptrNumCompGauss=mxGetPr(mxGetField(plhs[0],0,"NumCompGauss"));
-	ptrCurrentFrame=mxGetPr(mxGetField(plhs[0],0,"CurrentFrame")); 
-	ptrNumCompUnif=mxGetPr(mxGetField(plhs[0],0,"NumCompUnif"));
-	ptrNumComp=mxGetPr(mxGetField(plhs[0],0,"NumComp"));
-	ptrPi=mxGetPr(mxGetField(plhs[0],0,"Pi"));	
+	ptrNumCompGauss=args->NumCompGauss;
+	ptrCurrentFrame=args->CurrentFrame; 
+	ptrNumCompUnif=args->NumCompUnif;
+	ptrNumComp=args->NumComp;
+	ptrPi=args->Pi;	
 	
-	Mu=mxGetField(plhs[0],0,"Mu");
-	MuFore=mxGetField(plhs[0],0,"MuFore");
-	C=mxGetField(plhs[0],0,"C");
-    Min=mxGetField(plhs[0],0,"Min");
-    Max=mxGetField(plhs[0],0,"Max");
-	Den=mxGetField(plhs[0],0,"Den");
-	
-	NumCompGauss =(int)(*ptrNumCompGauss);
-	NumCompUnif = (int)(*ptrNumCompUnif);
-	NumComp=(int)(*ptrNumComp);
+	NumCompGauss =(*ptrNumCompGauss);
+	NumCompUnif = (*ptrNumCompUnif);
+	NumComp=(*ptrNumComp);
 	
 	#if (DEBUG_MODE == 1) 
 		fprintf(fich,"Allocating space for work variables\n");
 	#endif
 	
 	/* Allocate space for work variables */
-	data = (double*) mxMalloc(NumFrames * Dimension * sizeof(double)); 
+	data = (double*) malloc(NumFrames * Dimension * sizeof(double)); 
     
 	/* Work pointers */
-	ptrMu = mxGetPr(Mu);
-	ptrMuFore = mxGetPr(MuFore);
-	ptrC = mxGetPr(C);
-	ptrDen = mxGetPr(Den);
-	ptrMax = mxGetPr(Max);
-	ptrMin = mxGetPr(Min);
+	ptrMu = args->Mu;
+	ptrMuFore = args->MuFore;
+	ptrC = args->C;
+	ptrDen = args->Den;
+	ptrMax = args->Max;
+	ptrMin = args->Min;
 
 	/* Frame counter is initialised */
 	*ptrCurrentFrame = 0;
@@ -146,7 +127,7 @@ void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
 			if (i==MI_PIXEL) {
 				fprintf(fich,"Initialising Pixel nº %d\n",i);
 				fprintf(fich,"Data \n");
-				RecordMatrixLog(fich,data,Dimension,NumFrames);
+				//RecordMatrixLog(fich,data,Dimension,NumFrames);
 			}
 		#endif
 		
@@ -167,9 +148,9 @@ void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
 				if (i==MI_PIXEL) {
 					fprintf(fich,"Pi: %f\n",*(ptrPi+NdxComp));
 					fprintf(fich,"Mu\n");
-					RecordMatrixLog(fich,ptrMu,1,Dimension); 
+					//RecordMatrixLog(fich,ptrMu,1,Dimension); 
 					fprintf(fich,"C\n");
-					RecordMatrixLog(fich,ptrC,Dimension,Dimension); 
+					//RecordMatrixLog(fich,ptrC,Dimension,Dimension); 
 				}
 			#endif
 			
@@ -223,12 +204,12 @@ void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
 		fprintf(fich,"End of the initialisation process\n");
 		fprintf(fich,"-------------------------------------------\n");
 		/* Close the log file */
-		CerrarLog(fich);
+		fclose(fich);
 	#endif
 
 	
 	/* Release dynamic memory and instances */
-	mxFree(data);
+	free(data);
 }
 
 /* Procedure to return the color intensity of an image pixel which is pointed by 'data'. 
@@ -276,9 +257,12 @@ void MyCov(double *ptrCov,double *data,int Dimension,int NumPatterns)
      double *ptrDif,*ptrDifDif;
      int NdxPattern;
      
-     ptrMean=(double *) mxMalloc(Dimension*sizeof(double));
-     ptrDif=(double *) mxMalloc(Dimension*sizeof(double));     
-     ptrDifDif=(double *) mxMalloc(Dimension*Dimension*sizeof(double));     
+     ptrMean = (double *) malloc(Dimension*Dimension*sizeof(double)+2*Dimension*sizeof(double));
+     ptrDif = ptrMean + Dimension;
+     ptrDifDif = ptrDif + Dimension;
+     //ptrMean=(double *) malloc(Dimension*sizeof(double));
+     //ptrDif=(double *) malloc(Dimension*sizeof(double));     
+     //ptrDifDif=(double *) malloc(Dimension*Dimension*sizeof(double));     
      memset(ptrCov,0,Dimension*sizeof(double));     
      MyMean(ptrMean,data,Dimension,NumPatterns);
      for(NdxPattern=0;NdxPattern<NumPatterns;NdxPattern++)
@@ -289,8 +273,8 @@ void MyCov(double *ptrCov,double *data,int Dimension,int NumPatterns)
      }
      ScalarMatrixProduct(1.0/NumPatterns,ptrCov,ptrCov,Dimension,Dimension);
      
-     mxFree(ptrMean);
-     mxFree(ptrDif);
-     mxFree(ptrDifDif);          
+     free(ptrMean);
+     //free(ptrDif);
+     //free(ptrDifDif);          
 }
 

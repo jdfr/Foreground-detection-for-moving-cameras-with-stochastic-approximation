@@ -21,11 +21,13 @@ The compiled MEX file needs tbbmalloc_proxy.dll in the current folder in order t
 
 */
 
-#include "mex.h"
+#include "BMArgs.h"
 #include "BasicMath.h"
 #include <iostream>
 #include "tbb/tbb.h"
-#include "tbb/tbbmalloc_proxy.h"
+
+//This has to be included exactly ONCE per binary, so uncomment this if building this source on its own
+//#include "tbb/tbbmalloc_proxy.h"
 
 
 
@@ -41,13 +43,13 @@ using namespace tbb;
  * They are needed because the Microsoft compiler (.NET 2008) does not include them as primitives 
  * (does not include the C99 especification)
  */
-#ifndef isnan
+#ifdef _MSC_VER
 bool isnan(double x) {
     return x != x;
 }
 #endif
 
-#ifndef isinf
+#ifdef _MSC_VER
 bool isinf(double x) {
     return ((x - x) != 0);
 }
@@ -64,125 +66,93 @@ bool isinf(double x) {
 #define M_PI 3.141615
 #endif
 
-
-
-FILE * fich;
-
-void PixelInitialisation(long NdxPixel,int Dimension,double *ptrMu,double *ptrMuFore,double *ptrC,double *ptrLogDetC,double *ptrNoise,double *ptrCounter,double *ptrPattern);
+void PixelInitialisation(long NdxPixel,int Dimension,double *ptrMu,double *ptrMuFore,double *ptrC,double *ptrLogDetC,double *ptrNoise,double *ptrCounter,double *ptrPattern, FILE*fich);
 
 class AlmacenDatos {
     public:
         int Dimension;      //Antes era global
+        bool wantOutput;
         
         long NumPixels;
         const int *DimPatterns;
         int NumImageRows,NumImageColumns;
 
         int NumCompUnif,NumCompGauss,NumComp,CurrentFrame,Z;
-        double *ptrEpsilon,*ptrNumComp,*ptrNumCompUnif,*ptrNumCompGauss,*ptrPi;
-        double *ptrCounter,*ptrNoise,*ptrMuFore,*ptrZ;
-        double *ptrCurrentFrame,*pDataResp,*ptrOutput;
+        int *ptrNumComp,*ptrNumCompUnif,*ptrNumCompGauss,*ptrCurrentFrame,*ptrZ;
+        double *ptrEpsilon,*ptrPi;
+        double *ptrCounter,*ptrNoise,*ptrMuFore;
+        //double *pDataResp; //THIS SEEMS UNUSED
+        double *ptrOutput;
         double LearningRate,OneLessLearningRate;
         double LearningRateFore,OneLessLearningRateFore,PiFore,*ptrVectorProd,*ptrVectorDif;
 
         double *ptrMu,*ptrC,*ptrLogDetC,*ptrDen,*ptrMin,*ptrMax;
         int DimResp[3];
         double *ptrData;
+FILE * fich;
         
-        AlmacenDatos(mxArray **plhs, const mxArray **prhs){
-            mxArray *Mu,*C,*LogDetC,*Min,*Max,*Den,*Counter,*MuFore;
+        AlmacenDatos(Args_updateBM_MEX *args){
             
              #if (DEBUG_MODE == 1) 
-                /*Log variables*/
-                char *fileName;
-                mwSize loglen; 
-                mxArray *Log;
 
-                /* Getting the name of the log file*/
-                Log = mxGetField(prhs[0],0,"Log");
-                loglen = mxGetNumberOfElements(Log) + 1;
-                fileName = malloc(loglen*sizeof(char));
-
-                if (mxGetString(Log, fileName, loglen) != 0)
-                    mexErrMsgTxt("Could not convert string data.");
-
-                fich = OpenLog(fileName);
+                fich = fopen(args->logFileName, 'at');
                 fprintf(fich,"Beginning of the initialisation process\n");
             #endif
 
             /* Get input data */
-            DimPatterns=mxGetDimensions(prhs[1]);
-            NumImageRows = DimPatterns[0];
-            NumImageColumns = DimPatterns[1];
-            Dimension = DimPatterns[2];
-            ptrData = (double *) mxGetData(prhs[1]);
+            NumImageRows = args->NumImageRows;
+            NumImageColumns = args->NumImageColumns;
+            Dimension = args->Dimension;
+            wantOutput = args->wantOutput;
+            ptrData = args->arg1;
             NumPixels = NumImageRows * NumImageColumns;
 
-            /* Duplicate the model structure */
-            plhs[0]=mxDuplicateArray(prhs[0]);
-
             /* Get the work variables */
-            ptrNumCompGauss=mxGetPr(mxGetField(plhs[0],0,"NumCompGauss"));
-            ptrNumCompUnif=mxGetPr(mxGetField(plhs[0],0,"NumCompUnif"));
-            ptrNumComp=mxGetPr(mxGetField(plhs[0],0,"NumComp"));
-            ptrEpsilon=mxGetPr(mxGetField(plhs[0],0,"Epsilon"));
-            ptrPi=mxGetPr(mxGetField(plhs[0],0,"Pi"));
-
-            Mu=mxGetField(plhs[0],0,"Mu");
-            MuFore=mxGetField(plhs[0],0,"MuFore");
-            C=mxGetField(plhs[0],0,"C");
-            LogDetC=mxGetField(plhs[0],0,"LogDetC");
-            Min=mxGetField(plhs[0],0,"Min");
-            Max=mxGetField(plhs[0],0,"Max");
-            Den=mxGetField(plhs[0],0,"Den");
-            Counter=mxGetField(plhs[0],0,"Counter");
-
-            NumCompGauss =(int)(*ptrNumCompGauss);
-            NumCompUnif = (int)(*ptrNumCompUnif);
-            NumComp=(int)(*ptrNumComp);
-
-            /* Noise values for each dimension  */
-            ptrNoise=mxGetPr(mxGetField(plhs[0],0,"Noise"));
+            ptrNumCompGauss=args->NumCompGauss;
+            ptrNumCompUnif=args->NumCompUnif;
+            ptrNumComp=args->NumComp;
+            ptrEpsilon=args->Epsilon;
+            ptrPi=args->Pi;
 
             /* Work pointers */
-            ptrMu = mxGetPr(Mu);
-            ptrMuFore = mxGetPr(MuFore);
-            ptrC = mxGetPr(C);
-            ptrLogDetC = mxGetPr(LogDetC);
-            ptrDen = mxGetPr(Den);
-            ptrMax = mxGetPr(Max);
-            ptrMin = mxGetPr(Min);
-            ptrCounter = mxGetPr(Counter);
+            ptrMu=args->Mu;
+            ptrMuFore=args->MuFore;
+            ptrC=args->C;
+            ptrLogDetC=args->LogDetC;
+            ptrMin=args->Min;
+            ptrMax=args->Max;
+            ptrDen=args->Den;
+            ptrCounter=args->Counter;
+
+            NumCompGauss =(*ptrNumCompGauss);
+            NumCompUnif = (*ptrNumCompUnif);
+            NumComp=(*ptrNumComp);
+
+            /* Noise values for each dimension  */
+            ptrNoise=args->Noise;
 
             #if (REINITIALISATION_MODE == 1)  
-                ptrZ=mxGetPr(mxGetField(plhs[0],0,"Z"));
-                Z = (int)(*ptrZ);	
+                ptrZ=args->Z;
+                Z = (*ptrZ);	
                 #if (DEBUG_MODE == 1) 
                     fprintf(fich,"Z value for pixel reinitialisation: %d\n", Z);
                 #endif
             #endif
                         
-            /* Create a matrix for the return argument */
-            DimResp[0]=DimPatterns[0];
-            DimResp[1]=DimPatterns[1];
-            DimResp[2] = NumComp;
-            plhs[1] = mxCreateNumericArray(2,DimPatterns,mxDOUBLE_CLASS, mxREAL);
-            plhs[2] = mxCreateNumericArray(3,DimResp,mxDOUBLE_CLASS, mxREAL);
-
             /* Assign pointers to the outputs */
-            ptrOutput = (double*) mxGetData(plhs[1]);
-            pDataResp = (double*) mxGetData(plhs[2]);
+            if (wantOutput) ptrOutput = args->oarg1;
+            //pDataResp = args->oarg2;
 
             /* Update the current frame */
-            ptrCurrentFrame=mxGetPr(mxGetField(plhs[0],0,"CurrentFrame")); 
-            (*ptrCurrentFrame) = (*ptrCurrentFrame) + 1.0;
-            CurrentFrame=(int)(*ptrCurrentFrame);
+            ptrCurrentFrame=args->CurrentFrame; 
+            (*ptrCurrentFrame) = (*ptrCurrentFrame) + 1;
+            CurrentFrame=(*ptrCurrentFrame);
 
             #if (DEBUG_MODE == 1)  
                 if (CurrentFrame == 1) {
                     fprintf(fich,"Beginning of the update process\n");
                     fprintf(fich,"Sequence noise: ");
-                    RecordMatrixLog(fich,ptrNoise,1,Dimension); 
+                    //RecordMatrixLog(fich,ptrNoise,1,Dimension); 
                 }
                 fprintf(fich,"Current frame nº: %d\n", CurrentFrame);	
             #endif
@@ -203,7 +173,8 @@ class AplicadorParallel {
         const AlmacenDatos *Datos = mis_Datos;
         double *aux_Pattern,*aux_ptrPi,*aux_ptrTempVector;
         double *aux_ptrCounter,*aux_ptrMuFore;
-        double *aux_pDataResp,*aux_ptrOutput;
+        //double *aux_pDataResp; //THIS SEEMS UNUSED
+        double *aux_ptrOutput;
         double aux_GaussianResponsibilities,aux_SumResponsibilities,aux_AntPi,aux_CoefOld,aux_CoefNew,aux_CoefOldFore,aux_CoefNewFore;
         double aux_PiFore,*aux_ptrVectorProd,*aux_ptrVectorDif,*aux_ptrResponsibilities;
 
@@ -217,6 +188,8 @@ class AplicadorParallel {
         Map<VectorXd> *aux_VectorDif;
         MatrixXd *aux_L;
         int aux_NdxDim,aux_NdxComp,aux_NdxPixel;
+        bool wantOutput = Datos->wantOutput;
+        
         
         /* Allocate dynamic data */
         aux_Pattern=(double *) malloc(Datos->Dimension*sizeof(double));
@@ -239,8 +212,8 @@ class AplicadorParallel {
 
         /* Global pointers are incremented */
         aux_ptrData=Datos->ptrData+r.begin();
-        aux_pDataResp=Datos->pDataResp+r.begin();
-        aux_ptrOutput=Datos->ptrOutput+r.begin();
+        //aux_pDataResp=Datos->pDataResp+r.begin(); //THIS SEEMS UNUSED
+        if (wantOutput) aux_ptrOutput=Datos->ptrOutput+r.begin();
         aux_ptrCounter=Datos->ptrCounter+r.begin();
 		
 
@@ -254,7 +227,7 @@ class AplicadorParallel {
 		
 			/* The pixel is reinitialised if it belongs to the foreground too much time */
 			#if (REINITIALISATION_MODE == 1)  
-			if (*aux_ptrCounter > Datos->Z) PixelInitialisation(aux_NdxDim,Datos->Dimension,aux_ptrMu,aux_ptrMuFore,aux_ptrC,aux_ptrLogDetC,Datos->ptrNoise,aux_ptrCounter,aux_Pattern);
+			if (*aux_ptrCounter > Datos->Z) PixelInitialisation(aux_NdxDim,Datos->Dimension,aux_ptrMu,aux_ptrMuFore,aux_ptrC,aux_ptrLogDetC,Datos->ptrNoise,aux_ptrCounter,aux_Pattern, Datos->fich);
 			#endif
 
 			/* ------------------------------------------------------------------------------ */ 
@@ -315,7 +288,7 @@ class AplicadorParallel {
 			for(aux_NdxComp=0;aux_NdxComp<Datos->NumComp;aux_NdxComp++)
 			{
 				aux_ptrResponsibilities[aux_NdxComp]/=aux_SumResponsibilities;
-				aux_pDataResp[aux_NdxComp*Datos->NumPixels]=aux_ptrResponsibilities[aux_NdxComp];
+				//aux_pDataResp[aux_NdxComp*Datos->NumPixels]=aux_ptrResponsibilities[aux_NdxComp]; //THIS SEEMS UNUSED
 				if (aux_NdxComp<Datos->NumCompGauss)
 				{
 					aux_GaussianResponsibilities+=aux_ptrResponsibilities[aux_NdxComp];
@@ -326,7 +299,7 @@ class AplicadorParallel {
 			* The higher the value, the more probability to belong to the background of the sequence. 
 			* It is considered that the Gaussian distributions model the background of the sequence whereas the 
 			* the uniform distribution deal with the foreground part */
-			*(aux_ptrOutput) = aux_GaussianResponsibilities;
+			if (wantOutput) *(aux_ptrOutput) = aux_GaussianResponsibilities;
 
 			/* The counter is incremented if the pixel belongs to the foreground */
 			if (aux_GaussianResponsibilities < 0.5) (*aux_ptrCounter)+=1;
@@ -338,10 +311,10 @@ class AplicadorParallel {
 				
 			#if (DEBUG_MODE == 1)
 				if (aux_NdxPixel==MY_PIXEL) {
-					fprintf(fich,"Pixel nº %d\n",aux_NdxPixel);	
-					RecordMatrixLog(fich,aux_Pattern,1,Datos->Dimension);
-					fprintf(fich,"Responsabilities: ");
-					RecordMatrixLog(fich,aux_ptrResponsibilities,1,Datos->NumComp);
+					fprintf(Datos->fich,"Pixel nº %d\n",aux_NdxPixel);	
+					//RecordMatrixLog(fich,aux_Pattern,1,Datos->Dimension);
+					fprintf(Datos->fich,"Responsabilities: ");
+					//RecordMatrixLog(fich,aux_ptrResponsibilities,1,Datos->NumComp);
 				}
 			#endif
 
@@ -363,7 +336,7 @@ class AplicadorParallel {
 				aux_CoefNewFore=(Datos->LearningRateFore*(1.0-aux_ptrResponsibilities[aux_NdxComp]))/(aux_PiFore);
 
 				#if (DEBUG_MODE == 1)
-					if (aux_NdxPixel==MY_PIXEL) fprintf(fich,"aux_CoefOld: %f aux_CoefNew: %f\n",aux_CoefOld,aux_CoefNew);
+					if (aux_NdxPixel==MY_PIXEL) fprintf(Datos->fich,"aux_CoefOld: %f aux_CoefNew: %f\n",aux_CoefOld,aux_CoefNew);
 				#endif
 
 				/* MATLAB code: Model.Mu{aux_NdxComp} = (1-Model.Epsilon)*Model.Mu{aux_NdxComp} + ...
@@ -408,16 +381,16 @@ class AplicadorParallel {
 			/* Record the relevant pixel information to the log */
 			#if (DEBUG_MODE == 1)
 			if (aux_NdxPixel==MY_PIXEL) {
-				fprintf(fich,"Pi: %f Counter: %f\n",*aux_ptrPi,*aux_ptrCounter);
-				fprintf(fich,"Mu\n");
-				RecordMatrixLog(fich,aux_ptrMu,1,Datos->Dimension); 
-				fprintf(fich,"C\n");
-				RecordMatrixLog(fich,aux_ptrC,Datos->Dimension,Datos->Dimension); 
-				fprintf(fich,"InvC\n");
-				RecordMatrixLog(fich,ptrInvC,Datos->Dimension,Datos->Dimension);
-				fprintf(fich,"log(DetC): %f\n",*aux_ptrLogDetC); 
-				fprintf(fich,"MuFore\n");
-				RecordMatrixLog(fich,aux_ptrMuFore,1,Datos->Dimension); 
+				fprintf(Datos->fich,"Pi: %f Counter: %f\n",*aux_ptrPi,*aux_ptrCounter);
+				fprintf(Datos->fich,"Mu\n");
+				//RecordMatrixLog(fich,aux_ptrMu,1,Datos->Dimension); 
+				fprintf(Datos->fich,"C\n");
+				//RecordMatrixLog(fich,aux_ptrC,Datos->Dimension,Datos->Dimension); 
+				fprintf(Datos->fich,"InvC\n");
+				//RecordMatrixLog(fich,ptrInvC,Datos->Dimension,Datos->Dimension);
+				fprintf(Datos->fich,"log(DetC): %f\n",*aux_ptrLogDetC); 
+				fprintf(Datos->fich,"MuFore\n");
+				//RecordMatrixLog(fich,aux_ptrMuFore,1,Datos->Dimension); 
 			}
 			#endif
 
@@ -430,15 +403,15 @@ class AplicadorParallel {
 			
 			/* Global pointers are incremented */
 			aux_ptrData++;
-			aux_pDataResp++;
-			aux_ptrOutput++;
+			//aux_pDataResp++; //THIS SEEMS UNUSED
+			if (wantOutput) aux_ptrOutput++;
 			aux_ptrCounter++;
 		}
 
 			
 		#if (DEBUG_MODE == 1) 
 			/* Close the log file */
-			CloseLog(fich);
+			fclose(Datos->fich);
 		#endif
              
          /* Release pointers */       
@@ -464,36 +437,35 @@ class AplicadorParallel {
     }
 };
 
-void mexFunction( int nlhs, mxArray **plhs, int nrhs, const mxArray **prhs )     
-{
-	const int *DimPatterns;
+
+void updateBM_MEX(Args_updateBM_MEX *args) {
 	int NumImageRows,NumImageColumns;
 	long NumPixels;
 	/* Get input data */
-    DimPatterns=mxGetDimensions(prhs[1]);
-	NumImageRows = DimPatterns[0];
-	NumImageColumns = DimPatterns[1];
+	NumImageRows = args->NumImageRows;
+	NumImageColumns = args->NumImageColumns;
 	NumPixels = NumImageRows * NumImageColumns;
     
     
 	/* For each one of the image pixels */
 	//for (aux_NdxPixel=0;aux_NdxPixel<NumPixels;aux_NdxPixel++)
-    AlmacenDatos *const Datos = new AlmacenDatos(plhs, prhs);
+    //AlmacenDatos *const Datos = new AlmacenDatos(args);
+    AlmacenDatos Datos(args);
     Eigen::initParallel();
 	
 	/*int n = task_scheduler_init::default_num_threads();
     std::printf("n=%d\n",n);
 
 	task_scheduler_init(2);*/
-	parallel_for( blocked_range<size_t>(0,NumPixels), AplicadorParallel(Datos));
-	delete Datos;
+	parallel_for( blocked_range<size_t>(0,NumPixels), AplicadorParallel(&Datos));
+	//delete Datos;
 }
  
 /**********************************************************************************************
  * Function to reinitialise a pixel which has exceeded the Z value. Z is the maximun number of consecutive 
  * frames in which a pixel belongs to the foreground class.
  **********************************************************************************************/
-void PixelInitialisation(long NdxPixel,int Dimension,double *ptrMu,double *ptrMuFore,double *ptrC,double *ptrLogDetC,double *ptrNoise,double *ptrCounter,double *ptrPattern) 
+void PixelInitialisation(long NdxPixel,int Dimension,double *ptrMu,double *ptrMuFore,double *ptrC,double *ptrLogDetC,double *ptrNoise,double *ptrCounter,double *ptrPattern, FILE*fich) 
 {
 	double tmpLogDetC;
 	double *temp;

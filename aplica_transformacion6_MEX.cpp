@@ -5,7 +5,7 @@
 #include "opencv2/core/core.hpp"
 
 #include "tbb/tbb.h"
-#include "tbb/tbbmalloc_proxy.h"
+//#include "tbb/tbbmalloc_proxy.h"
 
 using namespace tbb;
 
@@ -13,7 +13,8 @@ using namespace tbb;
 #define HAS_OPENCV
 #endif
 
-#include "mex.h"
+//#include "mex.h"
+#include "BMArgs.h"
 
 //mex -g aplica_transformacion6_MEX.cpp opencv_imgproc248.lib opencv_core248.lib -IC:\opencv\build\include
 
@@ -101,32 +102,32 @@ cv::Mat transponer_N_canales(cv::Mat src, int nchannels){
 	return res;
 }
 
-void mexFunction(int nlhs, mxArray *plhs[], int nrhs,
-        const mxArray *prhs[]) {
+
+void aplica_transformacion6_MEX(Args_aplica_transformacion6_MEX *args) {
     
-	if (nrhs!=13)
-        mexErrMsgIdAndTxt("aplica_transformacion:invalidArgs", "Wrong number of arguments");
+	//if (nrhs!=13)
+        //printf("aplica_transformacion:invalidArgs: Wrong number of arguments\n");
 
     //Leemos parametros de entrada de Matlab
 	
-	int tam_cols = (int) *mxGetPr(prhs[7]);
-	int tam_rows = (int) *mxGetPr(prhs[8]);
-	int tam_objgrid = (int) *mxGetPr(prhs[9]);
-	int tam_cols_ini = (int) *mxGetPr(prhs[10]);
-	int tam_rows_ini = (int) *mxGetPr(prhs[11]);
-	int nchannels = (int) *mxGetPr(prhs[12]);
+	int tam_cols = args->tam_cols;
+	int tam_rows = args->tam_rows;
+	int tam_objgrid = args->tam_objgrid;
+	int tam_cols_ini = args->tam_cols_ini;
+	int tam_rows_ini = args->tam_rows_ini;
+	int nchannels = args->nchannels;
 
-	cv::Mat objgridX = cv::Mat(tam_objgrid, 1, CV_32FC1, mxGetPr(prhs[0]));
-	cv::Mat objgridY = cv::Mat(tam_objgrid, 1, CV_32FC1, mxGetPr(prhs[1]));
+	cv::Mat objgridX = cv::Mat(tam_objgrid, 1, CV_32FC1, args->arg0);
+	cv::Mat objgridY = cv::Mat(tam_objgrid, 1, CV_32FC1, args->arg1);
 
-	cv::Mat Mu = cv::Mat(tam_rows_ini, tam_cols_ini, CV_MAKETYPE(CV_64F, nchannels), mxGetPr(prhs[2]));
-	cv::Mat MuFore = cv::Mat(tam_rows_ini, tam_cols_ini, CV_MAKETYPE(CV_64F, nchannels), mxGetPr(prhs[3]));
-	cv::Mat R = cv::Mat(tam_rows_ini, tam_cols_ini, CV_MAKETYPE(CV_64F, nchannels*nchannels), mxGetPr(prhs[4]));
-	cv::Mat Pi = cv::Mat(tam_rows_ini, tam_cols_ini, CV_64FC2, mxGetPr(prhs[5]));
-	cv::Mat Counter = cv::Mat(tam_rows_ini, tam_cols_ini, CV_64FC1, mxGetPr(prhs[6]));
+	cv::Mat Mu = cv::Mat(tam_rows_ini, tam_cols_ini, CV_MAKETYPE(CV_64F, nchannels), args->arg2);
+	cv::Mat MuFore = cv::Mat(tam_rows_ini, tam_cols_ini, CV_MAKETYPE(CV_64F, nchannels), args->arg3);
+	cv::Mat R = cv::Mat(tam_rows_ini, tam_cols_ini, CV_MAKETYPE(CV_64F, nchannels*nchannels), args->arg4);
+	cv::Mat Pi = cv::Mat(tam_rows_ini, tam_cols_ini, CV_64FC2, args->arg5);
+	cv::Mat Counter = cv::Mat(tam_rows_ini, tam_cols_ini, CV_64FC1, args->arg6);
   
 	if( Mu.empty() || MuFore.empty() || R.empty() || Pi.empty() || Counter.empty()){ 
-		mexErrMsgIdAndTxt("aplica_transformacion:invalidArgs", "Error reading Matrix");
+		printf("aplica_transformacion:invalidArgs: Error reading Matrix\n");
 	}
 
 	cv::Mat Corona;
@@ -143,52 +144,29 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs,
 		tam_rows, tam_rows, tam_cols, tam_cols, objgridX, objgridY);
 	parallel_for( blocked_range<size_t>(0,nchannels), AplicadorParalelo(Datos));
 	
-	mwSize dims_2[2], dims_3[3];
 	cv::Mat Counter2, Pi2;
 
 	copyMakeBorder(Corona, Corona, tam_rows, tam_rows, tam_cols, tam_cols, cv::BORDER_CONSTANT, 1);
-	dims_2[0]=tam_objgrid;
-	dims_2[1]=1;
-	plhs[5]=mxCreateNumericArray (2, dims_2, mxSINGLE_CLASS, mxREAL);
-	cv::Mat Corona_out(tam_objgrid, 1, CV_32FC1, mxGetPr(plhs[5]));
+	cv::Mat Corona_out(tam_objgrid, 1, CV_32FC1, args->oarg5);
 	cv::remap(Corona, Corona_out, objgridX, objgridY,  cv::INTER_LINEAR, cv::BORDER_CONSTANT, 1);
 
-	dims_3[0]=2;
-	dims_3[1]=tam_objgrid;
-	dims_3[2]=1;
-	plhs[4]=mxCreateNumericArray (3, dims_3, mxDOUBLE_CLASS, mxREAL);
-	cv::Mat Pi_out(tam_objgrid, 1, CV_64FC2,mxGetPr(plhs[4]));
+	cv::Mat Pi_out(tam_objgrid, 1, CV_64FC2,args->oarg4);
 	copyMakeBorder(Pi, Pi2, tam_cols, tam_cols, tam_rows, tam_rows, cv::BORDER_REPLICATE);
 	cv::remap(Pi2, Pi_out, objgridY, objgridX, cv::INTER_LINEAR, cv::BORDER_REPLICATE);
 
-	dims_2[0]=tam_objgrid;
-	dims_2[1]=1;
-	plhs[2]=mxCreateNumericArray (2, dims_2, mxDOUBLE_CLASS, mxREAL);
-	cv::Mat Counter_out(tam_objgrid, 1, CV_64FC1,mxGetPr(plhs[2]));
+	cv::Mat Counter_out(tam_objgrid, 1, CV_64FC1,args->oarg2);
 	copyMakeBorder(Counter, Counter2, tam_cols, tam_cols, tam_rows, tam_rows, cv::BORDER_REPLICATE);	
 	cv::remap(Counter2, Counter_out, objgridY, objgridX,  cv::INTER_LINEAR, cv::BORDER_REPLICATE);
 	
 
 	//Return output images to mxArray (Matlab matrix)
-	dims_3[0]=nchannels;
-	dims_3[1]=tam_objgrid;
-	dims_3[2]=1;
-	plhs[0]=mxCreateNumericArray (3, dims_3, mxDOUBLE_CLASS, mxREAL);
-	cv::Mat Mu_out(tam_objgrid, 1, CV_MAKETYPE(CV_64F, nchannels), mxGetPr(plhs[0]));
+	cv::Mat Mu_out(tam_objgrid, 1, CV_MAKETYPE(CV_64F, nchannels), args->oarg0);
 	cv::merge(Mu_nD, Mu_out);
 
-	dims_3[0]=nchannels;
-	dims_3[1]=tam_objgrid;
-	dims_3[2]=1;
-	plhs[1]=mxCreateNumericArray (3, dims_3, mxDOUBLE_CLASS, mxREAL);
-	cv::Mat MuFore_out(tam_objgrid, 1, CV_MAKETYPE(CV_64F, nchannels), mxGetPr(plhs[1]));
+	cv::Mat MuFore_out(tam_objgrid, 1, CV_MAKETYPE(CV_64F, nchannels), args->oarg1);
 	cv::merge(MuFore_nD, MuFore_out);
 
-	dims_3[0]=nchannels*nchannels;
-	dims_3[1]=tam_objgrid;
-	dims_3[2]=1;
-	plhs[3]=mxCreateNumericArray (3, dims_3, mxDOUBLE_CLASS, mxREAL);
-	cv::Mat R_out(tam_objgrid, 1, CV_MAKETYPE(CV_64F, nchannels*nchannels), mxGetPr(plhs[3]));
+	cv::Mat R_out(tam_objgrid, 1, CV_MAKETYPE(CV_64F, nchannels*nchannels), args->oarg3);
 	cv::merge(R_nD, R_out);
 
 	delete Datos;
