@@ -50,8 +50,6 @@ def simulaSecuenciaParanoramaBM4(VideoFileSpec,deltaFrame,numFrames, SelectedFea
   plt.figure()
 
   for NdxFrame in range(2,numFrames+1):
-      if NdxFrame==50:
-          print 'redoble de tambores'
       imname = VideoFileSpec % (deltaFrame+NdxFrame)
       VideoFrame = u.readImg(imname)
       VideoFrame_0_1=VideoFrame/255
