@@ -1,0 +1,7 @@
+build
+*.so
+*.pyc
+Eigen
+badminton
+woman
+
