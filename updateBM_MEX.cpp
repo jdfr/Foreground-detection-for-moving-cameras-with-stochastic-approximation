@@ -25,7 +25,7 @@ The compiled MEX file needs tbbmalloc_proxy.dll in the current folder in order t
 #include "BasicMath.h"
 #include <iostream>
 #include "tbb/tbb.h"
-#include "tbb/tbbmalloc_proxy.h"
+//#include "tbb/tbbmalloc_proxy.h"
 
 
 
@@ -41,13 +41,15 @@ using namespace tbb;
  * They are needed because the Microsoft compiler (.NET 2008) does not include them as primitives 
  * (does not include the C99 especification)
  */
-#ifndef isnan
+#ifdef _MSC_VER
+//#ifndef isnan
 bool isnan(double x) {
     return x != x;
 }
 #endif
 
-#ifndef isinf
+#ifdef _MSC_VER
+//#ifndef isinf
 bool isinf(double x) {
     return ((x - x) != 0);
 }

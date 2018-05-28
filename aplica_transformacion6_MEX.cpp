@@ -2,10 +2,11 @@
 #include "opencv/cxcore.h"
 #include <iostream>
 
-#include "opencv2/core/core.hpp"
+#include "opencv2/core.hpp"
+#include "opencv2/imgproc.hpp"
 
 #include "tbb/tbb.h"
-#include "tbb/tbbmalloc_proxy.h"
+//#include "tbb/tbbmalloc_proxy.h"
 
 using namespace tbb;
 

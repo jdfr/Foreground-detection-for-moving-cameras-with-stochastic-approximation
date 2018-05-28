@@ -3,9 +3,12 @@
 #include "opencv/cxcore.h"
 #include <iostream>
 
-#include "opencv2/core/core.hpp"
-#include "opencv2/nonfree/features2d.hpp"
-#include "opencv2/highgui/highgui.hpp"
+#include "opencv2/calib3d.hpp"
+//#include "opencv2/core/core.hpp"
+#include "opencv2/core.hpp"
+#include "opencv2/xfeatures2d.hpp"
+//#include "opencv2/highgui/highgui.hpp"
+#include "opencv2/highgui.hpp"
 
 #ifndef HAS_OPENCV
 #define HAS_OPENCV
@@ -42,10 +45,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs,
 	cv::Mat descriptors_ant, descriptors_act;
 	std::vector<cv::KeyPoint> keypoints_ant, keypoints_act;
 
-	cv::SURF detector( minHessian, 4, 2, true, upright );
-
-	detector(img_ant, cv::noArray(), keypoints_ant, descriptors_ant);
-	detector(img_act, cv::noArray(), keypoints_act, descriptors_act);
+	cv::Ptr<cv::xfeatures2d::SURF> detector(cv::xfeatures2d::SURF::create( minHessian, 4, 2, true, upright ));
+	
+	detector->detectAndCompute(img_ant, cv::noArray(), keypoints_ant, descriptors_ant);
+	detector->detectAndCompute(img_act, cv::noArray(), keypoints_act, descriptors_act);
 
 	// Step 2: Matching descriptor vectors using FLANN matcher
 	cv::BFMatcher matcher;
@@ -82,7 +85,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs,
 	}
 
 	// Localize the object
-	cv::Mat H = cv::findHomography( obj, scene, CV_RANSAC, ransacReproj);
+	cv::Mat H = cv::findHomography( obj, scene, cv::RANSAC, ransacReproj);
    
     //Return output image to mxArray (Matlab matrix)
 	mwSize dims_2[2];
